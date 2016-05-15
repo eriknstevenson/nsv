@@ -41,8 +41,11 @@ defaultLayout body = do
 
       link_ [href_ "//fonts.googleapis.com/css?family=Raleway:400,300,600", rel_ "stylesheet", type_ "text/css"]
       link_ [href_ "https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css", rel_ "stylesheet", type_ "text/css"]
+      link_ [href_ "https://cdnjs.cloudflare.com/ajax/libs/normalize/4.1.1/normalize.min.css", rel_ "stylesheet", type_ "text/css"]
 
       --link_ [href_ "/css/skeleton.css", rel_ "stylesheet", type_ "text/css"]
+      --link_ [href_ "/css/normalize.css", rel_ "stylesheet", type_ "text/css"]
+
       link_ [href_ "/css/default.css", rel_ "stylesheet", type_ "text/css"]
 
     body_ $ with div_ [class_ "container"] $ do
