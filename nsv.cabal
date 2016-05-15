@@ -1,0 +1,29 @@
+name:                nsv
+version:             0.1.0.0
+synopsis:            displays random posts
+description:         Please see README.md
+homepage:            https://github.com/narrative/nsv#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Erik Stevenson
+maintainer:          eriknstevenson@gmail.com
+copyright:           2016 Erik Stevenson
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable nsv
+  hs-source-dirs:      src
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , acid-state
+                     , aeson
+                     , lucid
+                     , http-types
+                     , random-extras
+                     , scotty
+                     , text
+                     , wai-extra
+                     , wai-middleware-static
+                     , warp
