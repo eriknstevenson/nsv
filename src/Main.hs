@@ -3,6 +3,7 @@
 module Main where
 
 import           Data.Acid
+import           Data.Random
 import           Data.Random.Extras
 import qualified Data.Text as T
 import           Lucid
@@ -18,6 +19,7 @@ main = scotty 3000 $ do
   middleware $ staticPolicy (noDots >-> addBase "static")
 
   get "/" $ html . renderText $
+    status status200
     defaultLayout index
 
   notFound $ do
@@ -52,17 +54,17 @@ defaultLayout body = do
       body
       footer
 
-footer :: Html ()
-footer = footer_ $ div_ $ do
-  hr_ []
-  small_ "(c) 2016 Erik Stevenson"
-
 index :: Html ()
 index = do
   h1_ "hello world"
   ul_ $ do
     li_ "list item 1"
     li_ "list item 2"
+
+footer :: Html ()
+footer = footer_ $ div_ $ do
+  hr_ []
+  small_ "(c) 2016 Erik Stevenson"
 
 show404 :: Html ()
 show404 = do
