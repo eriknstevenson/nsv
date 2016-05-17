@@ -2,6 +2,8 @@
 
 module Main where
 
+import           Control.Concurrent
+import           Control.Monad
 import           Data.Acid
 import qualified Data.Text as T
 import           Lucid
@@ -12,18 +14,27 @@ import           System.Random
 import           Web.Scotty
 
 main :: IO ()
-main = scotty 3000 $ do
+main = do
 
-  middleware logStdoutDev
-  middleware $ staticPolicy (noDots >-> addBase "static")
+  forkIO manageDatabase
 
-  get "/" $ do
-    status status200
-    html . renderText $ defaultLayout index
+  scotty 3000 $ do
 
-  notFound $ do
-    status status404
-    html . renderText $ defaultLayout show404
+    middleware logStdoutDev
+    middleware $ staticPolicy (noDots >-> addBase "static")
+
+    get "/" $ do
+      status status200
+      html . renderText $ defaultLayout index
+
+    notFound $ do
+      status status404
+      html . renderText $ defaultLayout show404
+
+manageDatabase :: IO ()
+manageDatabase = forever $ do
+  putStrLn "updating database."
+  threadDelay 10000000
 
 defaultLayout :: Html () -> Html ()
 defaultLayout body = do
