@@ -3,13 +3,12 @@
 module Main where
 
 import           Data.Acid
-import           Data.Random
-import           Data.Random.Extras
 import qualified Data.Text as T
 import           Lucid
-import           Network.HTTP.Types (status404)
+import           Network.HTTP.Types
 import           Network.Wai.Middleware.RequestLogger
 import           Network.Wai.Middleware.Static
+import           System.Random
 import           Web.Scotty
 
 main :: IO ()
@@ -18,14 +17,13 @@ main = scotty 3000 $ do
   middleware logStdoutDev
   middleware $ staticPolicy (noDots >-> addBase "static")
 
-  get "/" $ html . renderText $
+  get "/" $ do
     status status200
-    defaultLayout index
+    html . renderText $ defaultLayout index
 
   notFound $ do
     status status404
     html . renderText $ defaultLayout show404
-
 
 defaultLayout :: Html () -> Html ()
 defaultLayout body = do
