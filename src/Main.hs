@@ -12,6 +12,7 @@ import           Control.Monad.State
 import           Data.Acid
 import           Data.SafeCopy
 import qualified Data.Text.Lazy as T
+import qualified Data.Text.Lazy.IO as T
 import           Data.Typeable
 import           Lucid
 import           Network.HTTP.Types (status200, status404)
@@ -38,10 +39,13 @@ $(makeAcidic ''PostState ['setPost, 'getTitle])
 database :: [PostState]
 database = []
 
---runDB :: (IsAcidic st, QueryEvent event) => event -> ReaderT (AcidState st) IO (EventResult event)
 runDB q = do
   db <- lift ask
   liftIO (query db q)
+
+setDB t = do
+  db <- lift ask
+  liftIO (update db $ SetPost t "never seen")
 
 main :: IO ()
 main = do
@@ -65,13 +69,20 @@ app = do
     q <- runDB GetTitle
     S.text . T.pack . show $ q
 
+  S.get "/update/:newtitle" $ do
+    newTitle <- S.param "newtitle"
+    setDB newTitle
+    S.text "update contents of db"
+
   S.notFound $ do
     S.status status404
     S.html . renderText $ defaultLayout show404
 
-manageDatabase :: IsAcidic st => ReaderT (AcidState st) IO ()
+--manageDatabase :: IsAcidic st => ReaderT (AcidState st) IO ()
 manageDatabase = forever $ do
-  liftIO . putStrLn $ "updating database."
+  db <- ask
+  res <- lift $ query db GetTitle
+  liftIO . print $ res
   liftIO . threadDelay $ 10000000
 
 defaultLayout :: Html () -> Html ()
