@@ -69,16 +69,21 @@ app = do
     q <- runDB GetTitle
     S.text . T.pack . show $ q
 
-  S.get "/update/:newtitle" $ do
+  S.get "/db/:newtitle" $ do
     newTitle <- S.param "newtitle"
+    old <- runDB GetTitle
     setDB newTitle
-    S.text "update contents of db"
+    S.text $ mconcat
+      [ "Previous db held:"
+      , T.pack . show $ old
+      , "\r\nupdated contents of db to:"
+      , T.pack . show $ newTitle
+      ]
 
   S.notFound $ do
     S.status status404
     S.html . renderText $ defaultLayout show404
 
---manageDatabase :: IsAcidic st => ReaderT (AcidState st) IO ()
 manageDatabase = forever $ do
   db <- ask
   res <- lift $ query db GetTitle
