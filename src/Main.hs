@@ -5,15 +5,10 @@
 module Main where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async
 import           Control.Monad
 import           Control.Monad.Reader
-import           Control.Monad.State
 import           Data.Acid
-import           Data.SafeCopy
 import qualified Data.Text.Lazy as T
-import qualified Data.Text.Lazy.IO as T
-import           Data.Typeable
 import           Lucid
 import           Network.HTTP.Types (status200, status404)
 import           Network.Wai.Middleware.RequestLogger
@@ -21,37 +16,16 @@ import           Network.Wai.Middleware.Static
 import           System.Random
 import qualified Web.Scotty.Trans as S
 
-data PostState = PostState {title :: T.Text, author :: T.Text}
-  deriving (Show, Typeable)
+import Database
 
-$(deriveSafeCopy 0 'base ''PostState)
-
-setPost :: T.Text -> T.Text -> Update PostState ()
-setPost t a = put (PostState t a)
-
-getTitle :: Query PostState T.Text
-getTitle = do
-  (PostState t _) <- ask
-  return t
-
-$(makeAcidic ''PostState ['setPost, 'getTitle])
-
-database :: [PostState]
-database = []
-
-runDB q = do
-  db <- lift ask
-  liftIO (query db q)
-
-setDB t = do
-  db <- lift ask
-  liftIO (update db $ SetPost t "never seen")
+randomList :: [Int] -> IO Int
+randomList _ = randomRIO (0, 10)
 
 main :: IO ()
 main = do
 
   db <- openLocalState (PostState "Hello World" "Erik")
-  forkIO (runReaderT manageDatabase db)
+  _ <- forkIO (runReaderT manageDatabase db)
   S.scottyT 3000 (`runReaderT` db) app
 
 app :: S.ScottyT T.Text (ReaderT (AcidState PostState) IO) ()
@@ -84,6 +58,7 @@ app = do
     S.status status404
     S.html . renderText $ defaultLayout show404
 
+manageDatabase :: ReaderT (AcidState PostState) IO ()
 manageDatabase = forever $ do
   db <- ask
   res <- lift $ query db GetTitle
