@@ -19,9 +19,12 @@ executable nsv
   build-depends:       base >= 4.7 && < 5
                      , acid-state
                      , aeson
-                     , lucid
+                     , async
                      , http-types
+                     , lucid
+                     , mtl
                      , random
+                     , safecopy
                      , scotty
                      , text
                      , wai-extra

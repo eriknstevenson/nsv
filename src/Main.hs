@@ -1,40 +1,78 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable, TypeFamilies, TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Main where
 
 import           Control.Concurrent
+import           Control.Concurrent.Async
 import           Control.Monad
+import           Control.Monad.Reader
+import           Control.Monad.State
 import           Data.Acid
-import qualified Data.Text as T
+import           Data.SafeCopy
+import qualified Data.Text.Lazy as T
+import           Data.Typeable
 import           Lucid
-import           Network.HTTP.Types
+import           Network.HTTP.Types (status200, status404)
 import           Network.Wai.Middleware.RequestLogger
 import           Network.Wai.Middleware.Static
 import           System.Random
-import           Web.Scotty
+import qualified Web.Scotty.Trans as S
+
+data PostState = PostState {title :: T.Text, author :: T.Text}
+  deriving (Show, Typeable)
+
+$(deriveSafeCopy 0 'base ''PostState)
+
+setPost :: T.Text -> T.Text -> Update PostState ()
+setPost t a = put (PostState t a)
+
+getTitle :: Query PostState T.Text
+getTitle = do
+  (PostState t _) <- ask
+  return t
+
+$(makeAcidic ''PostState ['setPost, 'getTitle])
+
+database :: [PostState]
+database = []
+
+--runDB :: (IsAcidic st, QueryEvent event) => event -> ReaderT (AcidState st) IO (EventResult event)
+runDB q = do
+  db <- lift ask
+  liftIO (query db q)
 
 main :: IO ()
 main = do
 
-  forkIO manageDatabase
+  db <- openLocalState (PostState "Hello World" "Erik")
+  forkIO (runReaderT manageDatabase db)
+  S.scottyT 3000 (`runReaderT` db) app
 
-  scotty 3000 $ do
+app :: S.ScottyT T.Text (ReaderT (AcidState PostState) IO) ()
+app = do
 
-    middleware logStdoutDev
-    middleware $ staticPolicy (noDots >-> addBase "static")
+  S.middleware logStdoutDev
+  S.middleware $ staticPolicy (noDots >-> addBase "static")
 
-    get "/" $ do
-      status status200
-      html . renderText $ defaultLayout index
+  S.get "/" $ do
+    S.status status200
+    S.html . renderText $ defaultLayout index
 
-    notFound $ do
-      status status404
-      html . renderText $ defaultLayout show404
+  S.get "/db" $ do
+    S.status status200
+    q <- runDB GetTitle
+    S.text . T.pack . show $ q
 
-manageDatabase :: IO ()
+  S.notFound $ do
+    S.status status404
+    S.html . renderText $ defaultLayout show404
+
+manageDatabase :: IsAcidic st => ReaderT (AcidState st) IO ()
 manageDatabase = forever $ do
-  putStrLn "updating database."
-  threadDelay 10000000
+  liftIO . putStrLn $ "updating database."
+  liftIO . threadDelay $ 10000000
 
 defaultLayout :: Html () -> Html ()
 defaultLayout body = do
