@@ -13,7 +13,7 @@ import qualified Data.Text.Lazy as T
 import           Data.Typeable
 import           System.Random
 
-type Database = AcidState Posts
+type Database = ReaderT (AcidState Posts) IO
 
 data Entry = Entry {title :: T.Text, author :: T.Text}
   deriving (Show, Typeable)
@@ -42,25 +42,23 @@ $(makeAcidic ''Posts ['addEntry, 'clearEntries, 'getEntries])
 initDB :: IO (AcidState Posts)
 initDB = openLocalState (Posts [])
 
-queryState :: ReaderT (AcidState (EventState GetEntries)) IO (EventResult GetEntries)
+queryState :: Database (EventResult GetEntries)
 queryState = do
  db <- ask
  liftIO (query db GetEntries)
 
-updateState :: T.Text
-            -> T.Text
-            -> ReaderT (AcidState Posts) IO ()
+updateState :: T.Text -> T.Text -> Database ()
 updateState t a = do
   db <- ask
   liftIO (update db $ AddEntry $ Entry t a)
 
-manageDatabase :: ReaderT (AcidState Posts) IO ()
+manageDatabase :: Database ()
 manageDatabase = forever $ do
   res <- queryState
   liftIO . print $ res
   liftIO . threadDelay $ 10000000
 
-readRandom :: ReaderT (AcidState Posts) IO (Maybe Entry)
+readRandom :: Database (Maybe Entry)
 readRandom = do
   entries <- queryState
   case entries of

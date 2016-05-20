@@ -21,7 +21,7 @@ main = do
   _ <- forkIO (runReaderT manageDatabase db)
   S.scottyT 3000 (`runReaderT` db) app
 
-app :: S.ScottyT T.Text (ReaderT Database IO) ()
+app :: S.ScottyT T.Text Database ()
 app = do
 
   S.middleware logStdoutDev
