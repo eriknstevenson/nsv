@@ -4,7 +4,7 @@
 
 module Database where
 
-import           Control.Monad
+import           Control.Concurrent
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Acid
@@ -13,25 +13,56 @@ import qualified Data.Text.Lazy as T
 import           Data.Typeable
 import           System.Random
 
-data PostState = PostState {title :: T.Text, author :: T.Text}
+type Database = AcidState Posts
+
+data Entry = Entry {title :: T.Text, author :: T.Text}
   deriving (Show, Typeable)
 
-$(deriveSafeCopy 0 'base ''PostState)
+data Posts = Posts [Entry]
+  deriving (Show, Typeable)
 
-setPost :: T.Text -> T.Text -> Update PostState ()
-setPost t a = put (PostState t a)
+$(deriveSafeCopy 0 'base ''Entry)
+$(deriveSafeCopy 0 'base ''Posts)
 
-getTitle :: Query PostState T.Text
-getTitle = do
-  (PostState t _) <- ask
+addEntry :: Entry -> Update Posts ()
+addEntry e = do
+  Posts entries <- get
+  put (Posts $ e:entries)
+
+clearEntries :: Update Posts ()
+clearEntries = put $ Posts []
+
+getEntries :: Query Posts [Entry]
+getEntries = do
+  Posts t <- ask
   return t
 
-$(makeAcidic ''PostState ['setPost, 'getTitle])
+$(makeAcidic ''Posts ['addEntry, 'clearEntries, 'getEntries])
 
-runDB q = do
-  db <- lift ask
-  liftIO (query db q)
+initDB :: IO (AcidState Posts)
+initDB = openLocalState (Posts [])
 
-setDB t = do
-  db <- lift ask
-  liftIO (update db $ SetPost t "never seen")
+queryState :: ReaderT (AcidState (EventState GetEntries)) IO (EventResult GetEntries)
+queryState = do
+ db <- ask
+ liftIO (query db GetEntries)
+
+updateState :: T.Text
+            -> T.Text
+            -> ReaderT (AcidState Posts) IO ()
+updateState t a = do
+  db <- ask
+  liftIO (update db $ AddEntry $ Entry t a)
+
+manageDatabase :: ReaderT (AcidState Posts) IO ()
+manageDatabase = forever $ do
+  res <- queryState
+  liftIO . print $ res
+  liftIO . threadDelay $ 10000000
+
+readRandom :: ReaderT (AcidState Posts) IO (Maybe Entry)
+readRandom = do
+  entries <- queryState
+  case entries of
+    [] -> lift $ return Nothing
+    xs -> liftIO $ (Just . (xs !!)) <$> randomRIO (0, length xs)
