@@ -63,4 +63,4 @@ readRandom = do
   entries <- queryState
   case entries of
     [] -> lift $ return Nothing
-    xs -> liftIO $ (Just . (xs !!)) <$> randomRIO (0, length xs)
+    xs -> liftIO $ (Just . (xs !!)) <$> randomRIO (0, (length xs) - 1)

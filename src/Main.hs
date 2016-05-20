@@ -29,7 +29,8 @@ app = do
 
   S.get "/" $ do
     S.status status200
-    S.html . renderText $ defaultLayout index
+    idx <- lift index
+    S.html . renderText $ defaultLayout idx
 
   S.get "/db" $ do
     S.status status200
@@ -78,12 +79,14 @@ defaultLayout body = do
       body
       footer
 
-index :: Html ()
+index :: Database (Html ())
 index = do
-  h1_ "hello world"
-  ul_ $ do
-    li_ "list item 1"
-    li_ "list item 2"
+  db <- ask
+  return $ do
+    h1_ "hello world"
+    ul_ $ do
+      li_ "list item 1"
+      li_ "list item 2"
 
 footer :: Html ()
 footer = footer_ $ div_ $ do
