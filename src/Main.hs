@@ -29,8 +29,8 @@ app = do
 
   S.get "/" $ do
     S.status status200
-    idx <- lift index
-    S.html . renderText $ defaultLayout idx
+    index <- lift generateIndex
+    S.html . renderText $ defaultLayout index
 
   S.get "/db" $ do
     S.status status200
@@ -79,11 +79,12 @@ defaultLayout body = do
       body
       footer
 
-index :: Database (Html ())
-index = do
-  db <- ask
+generateIndex :: Database (Html ())
+generateIndex = do
+  random <- maybe "Not found" title <$> readRandom
   return $ do
     h1_ "hello world"
+    h2_ $ toHtml random
     ul_ $ do
       li_ "list item 1"
       li_ "list item 2"
