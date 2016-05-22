@@ -22,6 +22,8 @@ executable nsv
                      , acid-state
                      , aeson
                      , http-types
+                     , lens
+                     , lens-aeson
                      , lucid
                      , mtl
                      , random
@@ -31,3 +33,4 @@ executable nsv
                      , wai-extra
                      , wai-middleware-static
                      , warp
+                     , wreq

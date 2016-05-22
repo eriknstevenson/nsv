@@ -5,12 +5,15 @@
 module Database where
 
 import           Control.Concurrent
+import           Control.Lens
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Acid
+import           Data.Aeson.Lens (key, members, values)
 import           Data.SafeCopy
 import qualified Data.Text.Lazy as T
 import           Data.Typeable
+import qualified Network.Wreq as W
 import           System.Random
 
 type Database = ReaderT (AcidState Posts) IO
@@ -57,6 +60,13 @@ manageDatabase = forever $ do
   res <- queryState
   liftIO . print $ res
   liftIO . threadDelay $ 10000000
+
+--requestData :: IO (Response ByteString)
+requestData = do
+  r <- W.get "http://reddit.com/r/quotes.json"
+  let test = r ^? W.responseBody . key "data" . key "children"
+  print test
+
 
 readRandom :: Database (Maybe Entry)
 readRandom = do

@@ -30,11 +30,11 @@ app = do
   S.get "/" $ do
     S.status status200
     index <- lift generateIndex
-    S.html . renderText $ defaultLayout index
+    S.html . renderText $ defaultLayout $ index
 
   S.get "/db" $ do
     S.status status200
-    q <- lift readRandom
+    q <- lift queryState
     S.text . T.pack . show $ q
 
   S.get "/db/:newtitle" $ do
@@ -83,8 +83,7 @@ generateIndex :: Database (Html ())
 generateIndex = do
   random <- maybe "Not found" title <$> readRandom
   return $ do
-    h1_ "hello world"
-    h2_ $ toHtml random
+    h1_ $ toHtml random
     ul_ $ do
       li_ "list item 1"
       li_ "list item 2"
