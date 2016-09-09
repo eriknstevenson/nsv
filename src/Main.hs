@@ -1,59 +1,32 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
 
 module Main where
 
-import           Control.Concurrent (forkIO)
-import           Control.Monad.Reader
-import qualified Data.Text.Lazy as T
-import           Lucid
-import           Network.HTTP.Types (status200, status404)
-import           Network.Wai.Middleware.RequestLogger
-import           Network.Wai.Middleware.Static
-import qualified Web.Scotty.Trans as S
-
-import Database
+import Control.Lens
+import Data.Aeson.Lens
+import Lucid
+import Network.HTTP.Types (status200, status404)
+import Network.Wai.Middleware.RequestLogger
+import Network.Wai.Middleware.Static
+import qualified Network.Wreq as Wreq
+import Web.Scotty
 
 main :: IO ()
-main = do
+main = scotty 3000 $ do
 
-  db <- initDB
-  _ <- forkIO (runReaderT manageDatabase db)
-  S.scottyT 3000 (`runReaderT` db) app
+  middleware logStdoutDev
+  middleware $ staticPolicy (noDots >-> addBase "static")
 
-app :: S.ScottyT T.Text Database ()
-app = do
+  get "/" $ do
+    status status200
+    html . renderText $ defaultLayout generateIndex
 
-  S.middleware logStdoutDev
-  S.middleware $ staticPolicy (noDots >-> addBase "static")
-
-  S.get "/" $ do
-    S.status status200
-    index <- lift generateIndex
-    S.html . renderText $ defaultLayout $ index
-
-  S.get "/db" $ do
-    S.status status200
-    q <- lift queryState
-    S.text . T.pack . show $ q
-
-  S.get "/db/:newtitle" $ do
-    newTitle <- S.param "newtitle"
-    old <- lift queryState
-    lift $ updateState newTitle "new author"
-    S.text $ mconcat
-      [ "Previous db held:"
-      , T.pack . show $ old
-      , "\r\nupdated contents of db to:"
-      , T.pack . show $ newTitle
-      ]
-
-  S.notFound $ do
-    S.status status404
-    S.html . renderText $ defaultLayout show404
+  notFound $ do
+    status status404
+    html . renderText $ defaultLayout show404
 
 defaultLayout :: Html () -> Html ()
-defaultLayout body = do
+defaultLayout content = do
   doctype_
   termWith "html" [lang_ "en"] $ do
     head_ $ do
@@ -62,31 +35,38 @@ defaultLayout body = do
 
       meta_ [charset_ "utf-8"]
       meta_ [httpEquiv_ "X-UA-Compatible", content_ "IE=edge"]
-      meta_ [name_ "description",          content_ "nsv"]
-      meta_ [name_ "author",               content_ "Erik Stevenson"]
-      meta_ [name_ "viewport",             content_ "width=device-width, initial-scale=1"]
+      meta_ [name_ "description", content_ "nsv"]
+      meta_ [name_ "author", content_ "Erik Stevenson"]
+      meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
 
       link_ [href_ "//fonts.googleapis.com/css?family=Raleway:400,300,600", rel_ "stylesheet", type_ "text/css"]
-      link_ [href_ "https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css", rel_ "stylesheet", type_ "text/css"]
-      link_ [href_ "https://cdnjs.cloudflare.com/ajax/libs/normalize/4.1.1/normalize.min.css", rel_ "stylesheet", type_ "text/css"]
-
-      --link_ [href_ "/css/skeleton.css", rel_ "stylesheet", type_ "text/css"]
-      --link_ [href_ "/css/normalize.css", rel_ "stylesheet", type_ "text/css"]
-
+      link_ [href_ "https://cdnjs.cloudflare.com/ajax/libs/bulma/0.1.2/css/bulma.min.css", rel_ "stylesheet", type_ "text/css"]
       link_ [href_ "/css/default.css", rel_ "stylesheet", type_ "text/css"]
 
-    body_ $ with div_ [class_ "container"] $ do
-      body
+    body_ [class_ "layout-default", style_ "zoom: 1;"] $ do
+      pageHeader
+      content
       footer
 
-generateIndex :: Database (Html ())
+generateIndex :: Html ()
 generateIndex = do
-  random <- maybe "Not found" title <$> readRandom
-  return $ do
-    h1_ $ toHtml random
-    ul_ $ do
-      li_ "list item 1"
-      li_ "list item 2"
+  section_ [class_ "section is-medium"] $ do
+    nav_ [class_ "level"] $ do
+      div_ [class_ "level-item has-text-centered"] $ do
+        p_ [class_ "heading"] "Tweets"
+        p_ [class_ "title"] "3,456"
+      div_ [class_ "level-item has-text-centered"] $ do
+        p_ [class_ "heading"] "Following"
+        p_ [class_ "title"] "123"
+      div_ [class_ "level-item has-text-centered"] $ do
+        p_ [class_ "heading"] "Followers"
+        p_ [class_ "title"] "456K"
+      div_ [class_ "level-item has-text-centered"] $ do
+        p_ [class_ "heading"] "Likes"
+        p_ [class_ "title"] "789"
+
+pageHeader :: Html ()
+pageHeader = return ()
 
 footer :: Html ()
 footer = footer_ $ div_ $ do
@@ -98,4 +78,3 @@ show404 = do
   img_ [src_ "/img/not_found.jpg"]
   h1_ "page not found"
   p_ [class_ "tagline"] "the page you requested does not exist"
-
