@@ -7,6 +7,7 @@ import Control.Lens
 import Data.Aeson
 import Data.Aeson.Lens
 import Data.Maybe
+import Data.Monoid
 import Data.Text (Text)
 import qualified Data.Text as T
 import Lucid
@@ -14,7 +15,7 @@ import Network.HTTP.Types (status200, status404)
 import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Middleware.Static
 import qualified Network.Wreq as Wreq
-import Web.Scotty
+import Web.Scotty hiding (post)
 
 main :: IO ()
 main = scotty 3000 $ do
@@ -24,21 +25,17 @@ main = scotty 3000 $ do
 
   get "/" $ do
     status status200
-
-    html . renderText $ defaultLayout generateIndex
+    html . renderText $ defaultLayout (generateIndex (Post "test post" "test" "http://google.com"))
 
   notFound $ do
     status status404
     html . renderText $ defaultLayout show404
 
-getPosts :: Text -> [Text] -> IO ()
+getPosts :: Text -> [Text] -> IO [Post]
 getPosts subreddit tags = do
-  r <- Wreq.get $ "http://reddit.com/r/" ++ T.unpack subreddit ++ "/.json"
+  r <- Wreq.get $ "http://reddit.com/r/" <> T.unpack subreddit ++ ".json"
   let results = r ^.. Wreq.responseBody . key "data" . key "children" . values . key "data" . search tags
-  mapM_ (print . makePost) results
-  putStrLn $ "Found number of posts: " ++ (results & length & show)
-
-  return ()
+  return . map makePost $ results
 
 data Post = Post
   { getTitle :: Text
@@ -50,21 +47,24 @@ makePost :: Value -> Post
 makePost e =
   Post (e ^. key "title" . _String)
        (e ^. key "author" . _String)
-       (e ^. key "permalink" . _String)
+       ("http://reddit.com" <> e ^. key "permalink" . _String)
 
 search :: [Text] -> Traversal' Value Value
 search tags =
   let
     clean = T.toLower . T.strip
     cleanedTags = map clean tags
-    getField f e = clean . fromMaybe "" $ (e ^? key f . _String)
+    getField f e = clean . fromMaybe "" $ e ^? key f . _String
     flairText = getField "link_flair_text"
     postTitle = getField "title"
-    checkTags searchText = or [ T.isInfixOf keyword searchText | keyword <- cleanedTags]
+    checkTags searchText = or $ do
+      keyword <- cleanedTags
+      return $ T.isInfixOf keyword searchText
   in
-    filtered
-      (\e -> checkTags (flairText e) ||
-             checkTags (postTitle e))
+    case tags of
+      [] -> filtered $ const True
+      _ -> filtered (\e -> checkTags (flairText e) ||
+                           checkTags (postTitle e))
 
 defaultLayout :: Html () -> Html ()
 defaultLayout content = do
@@ -89,9 +89,14 @@ defaultLayout content = do
       content
       footer
 
-generateIndex :: Html ()
-generateIndex =
-  section_ [class_ "section is-medium"] $
+generateIndex :: Post -> Html ()
+generateIndex post =
+  section_ [class_ "section is-medium"] $ do
+    div_ [class_ "container has-text-centered"] $ do
+      a_ [href_ $ getURL post] $
+        h3_ [class_ "title is-2"] $ toHtml . getTitle $ post
+      a_ [href_ $ "http://reddit.com/u/" <> getAuthor post] $
+        h4_ [class_ "subtitle is-4"] $ toHtml . getAuthor $ post
     nav_ [class_ "level"] $ do
       div_ [class_ "level-item has-text-centered"] $ do
         p_ [class_ "heading"] "Tweets"
