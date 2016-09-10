@@ -1,9 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Main where
 
 import Control.Lens
+import Data.Aeson
 import Data.Aeson.Lens
+import Data.Maybe
+import Data.Text (Text)
+import qualified Data.Text as T
 import Lucid
 import Network.HTTP.Types (status200, status404)
 import Network.Wai.Middleware.RequestLogger
@@ -19,11 +24,46 @@ main = scotty 3000 $ do
 
   get "/" $ do
     status status200
+
     html . renderText $ defaultLayout generateIndex
 
   notFound $ do
     status status404
     html . renderText $ defaultLayout show404
+
+getPosts :: Text -> [Text] -> IO ()
+getPosts subreddit tags = do
+  r <- Wreq.get $ "http://reddit.com/r/" ++ T.unpack subreddit ++ "/.json"
+  let results = r ^.. Wreq.responseBody . key "data" . key "children" . values . key "data" . search tags
+  mapM_ (print . makePost) results
+  putStrLn $ "Found number of posts: " ++ (results & length & show)
+
+  return ()
+
+data Post = Post
+  { getTitle :: Text
+  , getAuthor :: Text
+  , getURL :: Text
+  } deriving (Show)
+
+makePost :: Value -> Post
+makePost e =
+  Post (e ^. key "title" . _String)
+       (e ^. key "author" . _String)
+       (e ^. key "permalink" . _String)
+
+search :: [Text] -> Traversal' Value Value
+search tags =
+  let
+    clean = T.toLower . T.strip
+    cleanedTags = map clean tags
+    flairText e = clean . fromMaybe "" $ (e ^? key "link_flair_text" . _String)
+    postTitle e = clean . fromMaybe "" $ (e ^? key "title" . _String)
+    checkTags searchText = or [ T.isInfixOf keyword searchText | keyword <- cleanedTags]
+  in
+    filtered
+      (\e -> checkTags (flairText e) ||
+             checkTags (postTitle e))
 
 defaultLayout :: Html () -> Html ()
 defaultLayout content = do
@@ -49,8 +89,8 @@ defaultLayout content = do
       footer
 
 generateIndex :: Html ()
-generateIndex = do
-  section_ [class_ "section is-medium"] $ do
+generateIndex =
+  section_ [class_ "section is-medium"] $
     nav_ [class_ "level"] $ do
       div_ [class_ "level-item has-text-centered"] $ do
         p_ [class_ "heading"] "Tweets"
