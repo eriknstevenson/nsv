@@ -57,8 +57,9 @@ search tags =
   let
     clean = T.toLower . T.strip
     cleanedTags = map clean tags
-    flairText e = clean . fromMaybe "" $ (e ^? key "link_flair_text" . _String)
-    postTitle e = clean . fromMaybe "" $ (e ^? key "title" . _String)
+    getField f e = clean . fromMaybe "" $ (e ^? key f . _String)
+    flairText = getField "link_flair_text"
+    postTitle = getField "title"
     checkTags searchText = or [ T.isInfixOf keyword searchText | keyword <- cleanedTags]
   in
     filtered
