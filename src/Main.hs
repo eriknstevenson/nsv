@@ -35,7 +35,7 @@ main = scotty 3000 $ do
   get "/" $ do
     status ok200
     posts <- liftIO $
-      getPages "loseit" ["sv", "nsv"] Wreq.defaults 5 `catchAll` (\_ -> return [])
+      searchSubreddit "loseit" ["sv", "nsv"] 5 `catchAll` (\_ -> return [])
     let count = length posts
     if count > 0
       then do
@@ -52,24 +52,24 @@ main = scotty 3000 $ do
     status notFound404
     withDefaultLayout show404
 
-getPosts :: Text -> [Text] -> Wreq.Options -> IO ([Post], Wreq.Options)
-getPosts subreddit tags opts = do
-  r <- Wreq.getWith opts $ "http://reddit.com/r/" <> T.unpack subreddit <> ".json"
-  let results = r ^.. Wreq.responseBody . key "data" . key "children" . values . key "data" . search tags
-      nextReq = r ^. Wreq.responseBody . key "data" . key "after" . _String
-  return (map makePost results, Wreq.defaults & Wreq.param "after" .~ [nextReq])
 
-getPages :: Text -> [Text] -> Wreq.Options -> Int -> IO [Post]
-getPages subreddit tags opts pageCount = do 
-  res <- getPages' subreddit tags opts pageCount
+searchSubreddit :: Text -> [Text] -> Int -> IO [Post]
+searchSubreddit subreddit tags pageCount = do 
+  res <- getPages Wreq.defaults pageCount
   return . concat $ res
   where
-    getPages' subreddit tags opts pageCount
-      | pageCount >= 1 = do
-        (posts, nextReq) <- getPosts subreddit tags opts
-        rest <- getPages' subreddit tags nextReq (pageCount - 1)
+    getPages opts count
+      | count >= 1 = do
+        (posts, nextReq) <- getPage opts
+        rest <- getPages nextReq (count - 1)
         return $ posts : rest
       | otherwise = return []
+
+    getPage opts = do
+      r <- Wreq.getWith opts $ "http://reddit.com/r/" <> T.unpack subreddit <> ".json"
+      let results = r ^.. Wreq.responseBody . key "data" . key "children" . values . key "data" . search tags
+          nextReq = r ^. Wreq.responseBody . key "data" . key "after" . _String
+      return (map makePost results, Wreq.defaults & Wreq.param "after" .~ [nextReq])
 
 data Post = Post
   { getTitle :: Text
