@@ -33,7 +33,7 @@ main = scotty 3000 $ do
 
 getPosts :: Text -> [Text] -> IO [Post]
 getPosts subreddit tags = do
-  r <- Wreq.get $ "http://reddit.com/r/" <> T.unpack subreddit ++ ".json"
+  r <- Wreq.get $ "http://reddit.com/r/" <> T.unpack subreddit <> ".json"
   let results = r ^.. Wreq.responseBody . key "data" . key "children" . values . key "data" . search tags
   return . map makePost $ results
 
