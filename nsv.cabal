@@ -27,6 +27,7 @@ executable nsv
                      , random
                      , scotty
                      , text
+                     , transformers
                      , wai-extra
                      , wai-middleware-static
                      , wreq
