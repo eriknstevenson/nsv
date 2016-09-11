@@ -5,6 +5,7 @@ module Main where
 
 import Control.Lens
 import Control.Monad
+import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Aeson
 import Data.Aeson.Lens
@@ -12,6 +13,8 @@ import Data.Maybe
 import Data.Monoid
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Time
+import Data.Time.Clock.POSIX
 import Lucid
 import Network.HTTP.Types (ok200, notFound404)
 import Network.Wai.Middleware.RequestLogger
@@ -26,25 +29,13 @@ main = scotty 3000 $ do
   middleware logStdoutDev
   middleware $ staticPolicy (noDots >-> addBase "static")
 
-  --TODO: fix this behavior
-  get "/postsnotfound" $ do
-    status ok200
-    posts <- liftIO $ getPosts "pics" ["xxasdfsdf"]
-    let count = length posts
-    toDisplay <- liftIO $ (posts !!) <$> randomRIO (0, count)
-    withDefaultLayout $ indexPage toDisplay
-
-  --TODO: fix this behavior
-  get "/subredditnotfound" $ do
-    status ok200
-    posts <- liftIO $ getPosts "sdf" ["sdf"]
-    let count = length posts
-    toDisplay <- liftIO $ (posts !!) <$> randomRIO (0, count)
-    withDefaultLayout $ indexPage toDisplay
-
+  --TODO: Cache the result of the web request
+  --use a seperate thread and a `TVar Set` to store posts
+  --every couple minutes.
   get "/" $ do
     status ok200
-    posts <- liftIO $ getPosts "loseit" ["sv", "nsv"]
+    posts <- liftIO $
+      getPages "loseit" ["sv", "nsv"] Wreq.defaults 5 `catchAll` (\_ -> return [])
     let count = length posts
     if count > 0
       then do
@@ -61,23 +52,50 @@ main = scotty 3000 $ do
     status notFound404
     withDefaultLayout show404
 
-getPosts :: Text -> [Text] -> IO [Post]
-getPosts subreddit tags = do
-  r <- Wreq.get $ "http://reddit.com/r/" <> T.unpack subreddit <> ".json"
+getPosts :: Text -> [Text] -> Wreq.Options -> IO ([Post], Wreq.Options)
+getPosts subreddit tags opts = do
+  r <- Wreq.getWith opts $ "http://reddit.com/r/" <> T.unpack subreddit <> ".json"
   let results = r ^.. Wreq.responseBody . key "data" . key "children" . values . key "data" . search tags
-  return . map makePost $ results
+      nextReq = r ^. Wreq.responseBody . key "data" . key "after" . _String
+  return (map makePost results, Wreq.defaults & Wreq.param "after" .~ [nextReq])
+
+getPages :: Text -> [Text] -> Wreq.Options -> Int -> IO [Post]
+getPages subreddit tags opts pageCount = do 
+  res <- getPages' subreddit tags opts pageCount
+  return . concat $ res
+  where
+    getPages' subreddit tags opts pageCount
+      | pageCount >= 1 = do
+        (posts, nextReq) <- getPosts subreddit tags opts
+        rest <- getPages' subreddit tags nextReq (pageCount - 1)
+        return $ posts : rest
+      | otherwise = return []
 
 data Post = Post
   { getTitle :: Text
   , getAuthor :: Text
   , getURL :: Text
-  } deriving (Show)
+  , getDate :: Maybe UTCTime
+  , getID :: Text
+  }
+
+instance Show Post where
+  show (Post title _ _ _ _) = T.unpack title
 
 makePost :: Value -> Post
 makePost e =
-  Post (e ^. key "title" . _String)
-       (e ^. key "author" . _String)
-       ("http://reddit.com" <> e ^. key "permalink" . _String)
+  let 
+    date = 
+      posixSecondsToUTCTime . fromIntegral <$> 
+        e ^? key "created" . _Integer
+    permalink = 
+      "http://reddit.com" <> e^.key "permalink" . _String
+  in
+    Post (e ^. key "title" . _String)
+         (e ^. key "author" . _String)
+         permalink
+         date
+         (e ^. key "id" . _String)
 
 search :: [Text] -> Traversal' Value Value
 search tags =
@@ -96,7 +114,7 @@ search tags =
       _ -> filtered (\e -> checkTags (flairText e) ||
                            checkTags (postTitle e))
 
-data Page = Home | About | NotFound deriving (Show, Eq)
+data Page = Home | About | Share | NotFound deriving (Show, Eq)
 
 withDefaultLayout :: Html () -> ActionM ()
 withDefaultLayout = html . renderText . defaultLayout
@@ -132,11 +150,12 @@ indexPage post =
           h3_ [class_ "title is-1"] $ toHtml . getTitle $ post
         a_ [href_ $ "http://reddit.com/u/" <> getAuthor post] $
           h4_ [class_ "subtitle is-4"] $ toHtml (" - " <> getAuthor post)
-    div_ [class_ "hero-foot"] $
-      div_ [class_ "container"] $
-        div_ [class_ "nav-right"] $
-          small_ "(c) 2016 Erik Stevenson" 
+    pageFooter
 
+{- 
+ - Page that is displayed when there are no matching posts found.
+ - Provides a link to submit a SV/NSV at /r/loseit.
+-}
 shareYourNSV :: Html ()
 shareYourNSV = undefined
 
@@ -148,6 +167,7 @@ show404 =
       div_ [class_ "container has-text-centered"] $ do
         h1_ [class_ "title"] "Page not found."
         h2_ [class_ "subtitle"] "The page you requested does not exist."
+    pageFooter
 
 about :: Html ()
 about = do
@@ -156,13 +176,15 @@ about = do
     div_ [class_ "hero-body"] $
       div_ [class_ "container has-text-centered"] $
         h1_ [class_ "title"] "About"
-
   section_ [class_ "content"] $ do
     p_ "this is a test of the about page"
     p_ "this is paragraph #2"
     ul_ $ do
       li_ "item 1"
       li_ "item 2"
+  --TODO: Pretty sure this will be messed up because it's a hero-foot
+  --that isn't contained in a hero
+  pageFooter
 
 pageHeader :: Page -> Html ()
 pageHeader activePage = 
@@ -184,4 +206,10 @@ pageHeader activePage =
               span_ [class_ "icon"] $ i_ [class_ "fa fa-github"] ""
               span_ [] "Github"
 
+pageFooter :: Html ()
+pageFooter =
+  div_ [class_ "hero-foot"] $
+    div_ [class_ "container"] $
+      div_ [class_ "nav-right"] $
+        small_ "(c) 2016 Erik Stevenson" 
 

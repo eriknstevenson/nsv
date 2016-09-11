@@ -19,6 +19,7 @@ executable nsv
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
                      , aeson
+                     , exceptions
                      , http-types
                      , lens
                      , lens-aeson
@@ -27,6 +28,7 @@ executable nsv
                      , random
                      , scotty
                      , text
+                     , time
                      , transformers
                      , wai-extra
                      , wai-middleware-static
