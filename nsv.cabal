@@ -27,9 +27,11 @@ executable nsv
                      , mtl
                      , random
                      , scotty
+                     , stm
                      , text
                      , time
                      , transformers
+                     , vector
                      , wai-extra
                      , wai-middleware-static
                      , wreq

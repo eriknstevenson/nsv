@@ -3,6 +3,8 @@
 
 module Main where
 
+import Control.Concurrent
+import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
 import Control.Monad.Catch
@@ -15,48 +17,78 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time
 import Data.Time.Clock.POSIX
+import Data.Vector (Vector, (!))
+import qualified Data.Vector as V
 import Lucid
 import Network.HTTP.Types (ok200, notFound404)
 import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Middleware.Static
 import qualified Network.Wreq as Wreq
+import System.Environment
 import System.Random
+import Text.Read hiding (get)
 import Web.Scotty hiding (post)
 
 main :: IO ()
-main = scotty 3000 $ do
+main = do
 
-  middleware logStdoutDev
-  middleware $ staticPolicy (noDots >-> addBase "static")
+  (storedPosts, postCount) <- atomically $
+    (,) <$> newTVar V.empty <*> newTVar 0
 
-  --TODO: Cache the result of the web request
-  --use a seperate thread and a `TVar Set` to store posts
-  --every couple minutes.
-  get "/" $ do
-    status ok200
-    posts <- liftIO $
-      searchSubreddit "loseit" ["sv", "nsv"] 5 `catchAll` (\_ -> return [])
-    let count = length posts
-    if count > 0
-      then do
-        post <- liftIO $ (posts !!) <$> randomRIO (0, count)
-        withDefaultLayout $ indexPage post
-      else
-        withDefaultLayout shareYourNSV
+  _ <- forkIO (updatePosts storedPosts postCount)
 
-  get "/about" $ do
-    status ok200
-    withDefaultLayout about
+  port <- lookupEnv "PORT"
 
-  notFound $ do
-    status notFound404
-    withDefaultLayout show404
+  scotty (fromMaybe (3000::Int) (port >>= readMaybe))$ do
 
+    middleware logStdout
+    middleware $ staticPolicy (noDots >-> addBase "static")
 
-searchSubreddit :: Text -> [Text] -> Int -> IO [Post]
-searchSubreddit subreddit tags pageCount = do 
+    get "/" $ do
+      status ok200
+      (posts, count) <- liftIO . atomically $
+        (,) <$> readTVar storedPosts <*> readTVar postCount
+      if count > 0
+        then do
+          post <- liftIO $ (posts !) <$> randomRIO (0, count - 1)
+          withDefaultLayout $ indexPage post
+        else
+          withDefaultLayout shareYourNSV
+
+    get "/about" $ do
+      status ok200
+      withDefaultLayout about
+
+    notFound $ do
+      status notFound404
+      withDefaultLayout show404
+
+updatePosts :: TVar (Vector Post) -> TVar Int -> IO ()
+updatePosts posts count =
+  withDelay hour $ do
+    results <- searchSubreddit "loseit" ["sv","nsv"] 25 `catchAll` (\_ -> return V.empty)
+    atomically $ do
+      writeTVar posts results
+      writeTVar count $ V.length results
+
+type Time = Int
+
+hour :: Time
+hour = 60 * minute
+
+minute :: Time
+minute = 60 * second
+
+second :: Time
+second = 1000000
+
+withDelay :: Time -> IO a -> IO ()
+withDelay delay action = forever $ action >> threadDelay delay
+
+searchSubreddit :: Text -> [Text] -> Int -> IO (Vector Post)
+searchSubreddit subreddit tags pageCount = do
   res <- getPages Wreq.defaults pageCount
-  return . concat $ res
+  return . V.fromList . concat $ res
   where
     getPages opts count
       | count >= 1 = do
@@ -84,11 +116,11 @@ instance Show Post where
 
 makePost :: Value -> Post
 makePost e =
-  let 
-    date = 
-      posixSecondsToUTCTime . fromIntegral <$> 
+  let
+    date =
+      posixSecondsToUTCTime . fromIntegral <$>
         e ^? key "created" . _Integer
-    permalink = 
+    permalink =
       "http://reddit.com" <> e^.key "permalink" . _String
   in
     Post (e ^. key "title" . _String)
@@ -138,7 +170,7 @@ defaultLayout content = do
       link_ [href_ "/css/font-awesome.min.css", rel_ "stylesheet", type_ "text/css"]
       link_ [href_ "/css/default.css", rel_ "stylesheet", type_ "text/css"]
 
-    body_ [class_ "layout-default", style_ "zoom: 1;"] content
+    body_ [class_ "layout-default", style_ "zoom: 1;"] $ content >> pageFooter
 
 indexPage :: Post -> Html ()
 indexPage post =
@@ -150,44 +182,43 @@ indexPage post =
           h3_ [class_ "title is-1"] $ toHtml . getTitle $ post
         a_ [href_ $ "http://reddit.com/u/" <> getAuthor post] $
           h4_ [class_ "subtitle is-4"] $ toHtml (" - " <> getAuthor post)
-    pageFooter
 
-{- 
+{-
  - Page that is displayed when there are no matching posts found.
  - Provides a link to submit a SV/NSV at /r/loseit.
 -}
 shareYourNSV :: Html ()
-shareYourNSV = undefined
+shareYourNSV =
+  section_ [class_ "hero is-large"] $ do
+    pageHeader About
+    div_ [class_ "hero-body"] $
+      div_ [class_ "container has-text-centered"] $ do
+        h1_ [class_ "title"] "No posts found."
+        a_ [href_ "https://www.reddit.com/r/loseit/submit?selftext=true"] $
+          h2_ [class_ "subtitle"] "submit your own!"
 
 show404 :: Html ()
-show404 = 
+show404 =
   section_ [class_ "hero is-large is-danger is-bold"] $ do
     pageHeader NotFound
     div_ [class_ "hero-body"] $
       div_ [class_ "container has-text-centered"] $ do
         h1_ [class_ "title"] "Page not found."
         h2_ [class_ "subtitle"] "The page you requested does not exist."
-    pageFooter
 
 about :: Html ()
-about = do
+about =
   section_ [class_ "hero is-medium is-primary"] $ do
     pageHeader About
     div_ [class_ "hero-body"] $
-      div_ [class_ "container has-text-centered"] $
-        h1_ [class_ "title"] "About"
-  section_ [class_ "content"] $ do
-    p_ "this is a test of the about page"
-    p_ "this is paragraph #2"
-    ul_ $ do
-      li_ "item 1"
-      li_ "item 2"
-  --TODO: Pretty sure this will be messed up because it's a hero-foot
-  --that isn't contained in a hero
-  pageFooter
+      div_ [class_ "container has-text-centered"] $ do
+        h1_ [class_ "title"] "NSV"
+        a_ [href_ "https://www.reddit.com/r/loseit/submit?selftext=true"] $
+          h3_ [class_ "subtitle"] "submit your own nsv!"
+
 
 pageHeader :: Page -> Html ()
-pageHeader activePage = 
+pageHeader activePage =
   div_ [class_ "hero-head"] $
     header_ [class_ "nav"] $
       div_ [class_ "container"] $ do
@@ -208,8 +239,8 @@ pageHeader activePage =
 
 pageFooter :: Html ()
 pageFooter =
-  div_ [class_ "hero-foot"] $
+  footer_ [class_ "footer"] $
     div_ [class_ "container"] $
-      div_ [class_ "nav-right"] $
-        small_ "(c) 2016 Erik Stevenson" 
+      div_ [class_ "content has-text-centered"] $
+        p_ "(c) 2016 Erik Stevenson"
 
