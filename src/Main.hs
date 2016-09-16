@@ -21,6 +21,7 @@ import Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import Lucid
 import Network.HTTP.Types (ok200, notFound404)
+import Network.Wai.Middleware.Gzip
 import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Middleware.Static
 import qualified Network.Wreq as Wreq
@@ -41,6 +42,7 @@ main = do
 
   scotty (fromMaybe (3000::Int) (port >>= readMaybe))$ do
 
+    middleware $ gzip (def {gzipFiles = GzipCompress})
     middleware logStdout
     middleware $ staticPolicy (noDots >-> addBase "static")
 
