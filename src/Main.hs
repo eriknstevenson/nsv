@@ -167,8 +167,7 @@ defaultLayout content = do
 
       link_ [href_ "//fonts.googleapis.com/css?family=Raleway:400,300,600", rel_ "stylesheet", type_ "text/css"]
       link_ [href_ "https://cdnjs.cloudflare.com/ajax/libs/bulma/0.1.2/css/bulma.min.css", rel_ "stylesheet", type_ "text/css"]
-      link_ [href_ "/css/font-awesome.min.css", rel_ "stylesheet", type_ "text/css"]
-      link_ [href_ "/css/default.css", rel_ "stylesheet", type_ "text/css"]
+      link_ [href_ "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css", rel_ "stylesheet", type_ "text/css"]
 
     body_ [class_ "layout-default", style_ "zoom: 1;"] $ content >> pageFooter
 
