@@ -1,1 +1,1 @@
-web: stack exec nsv
+web: nsv
