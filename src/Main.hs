@@ -223,7 +223,7 @@ pageHeader activePage =
     header_ [class_ "nav"] $
       div_ [class_ "container"] $ do
         div_ [class_ "nav-left"] $
-          a_ [class_ "nav-item"] $
+          a_ [class_ "nav-item", href_ "/"] $
             h4_ [class_ "title is-4"] "nsv"
         div_ [class_ "nav-right nav-menu"] $ do
           with (a_ [class_ "nav-item", href_ "/"] "Home") $ do
