@@ -40,6 +40,9 @@ main = do
 
   port <- lookupEnv "PORT"
 
+  sdf
+
+
   scotty (fromMaybe (3000::Int) (port >>= readMaybe))$ do
 
     middleware $ gzip (def {gzipFiles = GzipCompress})
