@@ -39,9 +39,13 @@ main = do
   (storedPosts, postCount) <- atomically $
     (,) <$> newTVar V.empty <*> newTVar 0
 
+  putStrLn "updating."
+
   updatePosts storedPosts postCount 3
 
-  _ <- forkIO (updatePosts storedPosts postCount 25)
+  putStrLn "done updating."
+
+  _ <- forkIO (updateWorker storedPosts postCount 25)
 
   port <- lookupEnv "PORT"
 
@@ -70,13 +74,16 @@ main = do
       status notFound404
       withDefaultLayout show404
 
+updateWorker :: TVar (Vector Post) -> TVar Int -> Int -> IO ()
+updateWorker posts count pageCount =
+  withDelay hour $ updatePosts posts count pageCount
+
 updatePosts :: TVar (Vector Post) -> TVar Int -> Int -> IO ()
-updatePosts posts count pageCount =
-  withDelay hour $ do
-    results <- searchSubreddit "loseit" ["sv","nsv"] pageCount `catchAll` (\_ -> return V.empty)
-    atomically $ do
-      writeTVar posts results
-      writeTVar count $ V.length results
+updatePosts posts count pageCount = do
+  results <- searchSubreddit "loseit" ["sv","nsv"] pageCount `catchAll` (\_ -> return V.empty)
+  atomically $ do
+    writeTVar posts results
+    writeTVar count $ V.length results
 
 type Time = Int
 
