@@ -24,6 +24,7 @@ executable nsv
                      , lens
                      , lens-aeson
                      , lucid
+                     , html-entities
                      , mtl
                      , random
                      , scotty

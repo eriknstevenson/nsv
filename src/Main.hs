@@ -15,11 +15,14 @@ import Data.Maybe
 import Data.Monoid
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as T (toStrict)
+import qualified Data.Text.Lazy.Builder as T (toLazyText)
 import Data.Time
 import Data.Time.Clock.POSIX
 import Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import Lucid
+import HTMLEntities.Decoder
 import Network.HTTP.Types (ok200, notFound404)
 import Network.Wai.Middleware.Gzip
 import Network.Wai.Middleware.RequestLogger
@@ -36,7 +39,9 @@ main = do
   (storedPosts, postCount) <- atomically $
     (,) <$> newTVar V.empty <*> newTVar 0
 
-  _ <- forkIO (updatePosts storedPosts postCount)
+  updatePosts storedPosts postCount 3
+
+  _ <- forkIO (updatePosts storedPosts postCount 25)
 
   port <- lookupEnv "PORT"
 
@@ -65,10 +70,10 @@ main = do
       status notFound404
       withDefaultLayout show404
 
-updatePosts :: TVar (Vector Post) -> TVar Int -> IO ()
-updatePosts posts count =
+updatePosts :: TVar (Vector Post) -> TVar Int -> Int -> IO ()
+updatePosts posts count pageCount =
   withDelay hour $ do
-    results <- searchSubreddit "loseit" ["sv","nsv"] 25 `catchAll` (\_ -> return V.empty)
+    results <- searchSubreddit "loseit" ["sv","nsv"] pageCount `catchAll` (\_ -> return V.empty)
     atomically $ do
       writeTVar posts results
       writeTVar count $ V.length results
@@ -125,11 +130,14 @@ makePost e =
     permalink =
       "http://reddit.com" <> e^.key "permalink" . _String
   in
-    Post (e ^. key "title" . _String)
-         (e ^. key "author" . _String)
+    Post (e ^. key "title" . _String & decodeHTMLEntities)
+         (e ^. key "author" . _String & decodeHTMLEntities)
          permalink
          date
          (e ^. key "id" . _String)
+
+decodeHTMLEntities :: Text -> Text
+decodeHTMLEntities = T.toStrict . T.toLazyText . htmlEncodedText
 
 search :: [Text] -> Traversal' Value Value
 search tags =
